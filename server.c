@@ -34,16 +34,31 @@ void getargs(int *port, int argc, int *thread_number, int *queue_size , char *ar
     *queue_size = atoi(argv[3]);
 }
 
-void* requestHandleWrapper(void* connfd)
+void* handle(void* listenfd)
 {
-	requestHandle(*((int*)connfd));
-	return 0;
+	int connfd, clientlen;
+	struct sockaddr_in clientaddr;
+
+    //cond_t c;
+    while (1) {
+		clientlen = sizeof(clientaddr);
+		connfd = Accept(*(int*)listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
+		fprintf(stdout, "\naccept\n");
+		// 
+		// HW3: In general, don't handle the request in the main thread.
+		// Save the relevant info in a buffer and have one of the worker threads 
+		// do the work. 
+		// 
+		
+		requestHandle(connfd);
+
+		Close(connfd);
+    }
 }
 
 int main(int argc, char *argv[])
 {
-    int listenfd, connfd, port, clientlen, threads_number, queue_size;
-    struct sockaddr_in clientaddr;
+    int listenfd, port, threads_number, queue_size;
 
     getargs(&port, argc, &threads_number, &queue_size, argv);
 
@@ -51,24 +66,13 @@ int main(int argc, char *argv[])
     // HW3: Create some threads...
     //
     pthread_t threads[threads_number];
-
-    listenfd = Open_listenfd(port);
-    while (1) {
-		clientlen = sizeof(clientaddr);
-		connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-
-		// 
-		// HW3: In general, don't handle the request in the main thread.
-		// Save the relevant info in a buffer and have one of the worker threads 
-		// do the work. 
-		// 
-		for(unsigned int i =0; i<threads_number; i++)
-		{
-			pthread_create(&threads[i], NULL, requestHandleWrapper, (void*)&connfd);
-		}
-
-		Close(connfd);
-    }
+    
+	listenfd = Open_listenfd(port);
+	for(unsigned int i =0; i<threads_number; i++)
+	{
+		pthread_create(&threads[i], NULL, handle, (void*) &listenfd);
+	}
+	pthread_join(threads[0], NULL);
 
 }
 
