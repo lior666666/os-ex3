@@ -154,7 +154,7 @@ void requestServeStatic(int fd, char *filename, int filesize)
 // handle a request
 void requestHandle(int fd)
 {
-   sleep(10);
+   sleep(3);
    int is_static;
    struct stat sbuf;
    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
