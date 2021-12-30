@@ -96,14 +96,11 @@ void getargs(int *port, int argc, int *thread_number, int *queue_size , char *ar
     *queue_size = atoi(argv[3]);
 }
 
-void* handle(void* listenfd)
+void* handle(void* list)
 {
-	
-
-    //cond_t c;
     while (1) {
 		mutex_lock(&m);
-		while((struct Node* waiting_requests == NULL)
+		while(waiting_requests == NULL)
 		{
 			cond_wait(&c, &m);
 		}
@@ -113,18 +110,17 @@ void* handle(void* listenfd)
 		// do the work. 
 		// 
 		
-		requestHandle(connfd);
-
-		Close(connfd);
+		requestHandle(waiting_requests->data);
+		Close(waiting_requests->data);
+		deleteNode(&waiting_requests, waiting_requests->data);
+		mutex_unlock(&m);
     }
 }
 
 int main(int argc, char *argv[])
 {
-    int listenfd, port, threads_number, queue_size;
-
+    int listenfd, port, threads_number, queue_size, connfd, clientlen;
     getargs(&port, argc, &threads_number, &queue_size, argv);
-	int connfd, clientlen;
 	struct sockaddr_in clientaddr;
     // 
     // HW3: Create some threads...
@@ -132,13 +128,13 @@ int main(int argc, char *argv[])
     pthread_t threads[threads_number];
     for(unsigned int i =0; i<threads_number; i++)
 	{
-		pthread_create(&threads[i], NULL, handle, (void*) waiting_requests);
+		pthread_create(&threads[i], NULL, handle, NULL);
 	}
 	listenfd = Open_listenfd(port);
 	while (1) {
 		clientlen = sizeof(clientaddr);
 		connfd = Accept(*(int*)listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-		
+		push_back(&waiting_requests, connfd);
 	}
 	
 	pthread_join(threads[0], NULL);
