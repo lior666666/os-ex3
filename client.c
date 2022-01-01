@@ -75,7 +75,7 @@ int main(int argc, char *argv[])
 {
   char *host, *filename;
   int port;
-  int clientfd;
+  int clientfd1, clientfd2, clientfd3, clientfd4;
 
   if (argc != 4) {
     fprintf(stderr, "Usage: %s <host> <port> <filename>\n", argv[0]);
@@ -87,12 +87,28 @@ int main(int argc, char *argv[])
   filename = argv[3];
 
   /* Open a single connection to the specified host and port */
-  clientfd = Open_clientfd(host, port);
+  clientfd1 = Open_clientfd(host, port);
+  clientfd2 = Open_clientfd(host, port);
+  clientfd3 = Open_clientfd(host, port);
+  clientfd4 = Open_clientfd(host, port);
   
-  clientSend(clientfd, filename);
-  clientPrint(clientfd);
+  clientSend(clientfd1, filename);
+  clientPrint(clientfd1);
+  
+  clientSend(clientfd2, filename);
+  clientPrint(clientfd2);
+  
+  clientSend(clientfd3, filename);
+  clientPrint(clientfd3);
+  
+  clientSend(clientfd4, filename);
+  clientPrint(clientfd4);
     
-  Close(clientfd);
+  Close(clientfd1);
+  Close(clientfd2);
+  Close(clientfd3);
+  Close(clientfd4);
+  fprintf(stdout, "*******Usage: 1\n");
 
   exit(0);
 }

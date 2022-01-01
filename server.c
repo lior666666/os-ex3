@@ -1,6 +1,6 @@
 #include "segel.h"
 #include "request.h"
-//#include <condition_variable>
+
 
 // 
 // server.c: A very, very simple web server
@@ -12,103 +12,108 @@
 // Most of the work is done within routines written in request.c
 //
 
-
-
 // A linked list node
-typedef struct node {
+struct Node {
     int data;
-    struct node* next;
+    struct Node* next;
     int size;
-}* Node;
+};
 
-Node createNode() {
-	Node ptr = malloc(sizeof(*ptr));
-	if(!ptr) {
-		return NULL;
-	}
-	ptr->data = 0;
-	ptr->next = NULL;
-	ptr->size = 0;
-	return ptr;
+/* Given a reference (pointer to pointer) to the head of a
+   list and an int, inserts a new node on the front of the
+   list. */
+void pushNode(struct Node** head_ref, int new_data)
+{
+    struct Node* new_node = (struct Node*)malloc(sizeof(struct Node));
+    new_node->data = new_data;
+    struct Node *temp = *head_ref;
+    while (temp->next != NULL) {
+        temp = temp->next;
+    }
+    temp->next = new_node;
+    new_node->next = NULL;
+    (*head_ref)->size = (*head_ref)->size +1;
 }
- 
-void destroyList(Node ptr) {
-	while(ptr) {
-		Node toDelete = ptr;
-		ptr = ptr->next;
+
+void RemoveNode(struct Node** head_ref, int key)
+{
+    // Store head node
+    struct Node *temp = *head_ref, *prev;
+ 
+    // If head node itself holds the key to be deleted
+    if (temp != NULL && temp->data == key) {
+        *head_ref = temp->next; // Changed head
+        free(temp); // free old head
+        return;
+    }
+ 
+    // Search for the key to be deleted, keep track of the
+    // previous node as we need to change 'prev->next'
+    while (temp != NULL && temp->data != key) {
+        prev = temp;
+        temp = temp->next;
+    }
+ 
+    // If key was not present in linked list
+    if (temp == NULL)
+        return;
+ 
+    // Unlink the node from linked list
+    prev->next = temp->next;
+ 
+    free(temp); // Free memory
+    (*head_ref)->size = (*head_ref)->size -1;
+}
+
+void printList(struct Node* node)
+{
+    while (node != NULL) {
+        fprintf(stdout, " %d \n", node->data);
+        node = node->next;
+    }
+}
+ 
+void destroyList(struct Node** ptr) {
+	while(*ptr) {
+		struct Node *toDelete = *ptr;
+		*ptr = (*ptr)->next;
 		free(toDelete);
 	}
 }
 
-int pushNode(Node head, int new_data)
+int isEmpty(struct Node** head)
 {
-    Node ptr = malloc(sizeof(*ptr));
-    if(!ptr) {
-		return 0;
-	}
-	ptr->data = new_data;
-	ptr->next = NULL;
-	ptr->size = 0;
-	head->size = head->size + 1;
-	Node last = head;
-	while (last->next != NULL)
-		last = last->next;
-	last->next = ptr;
-	return 1;
+	return (*head)->size == 0;
 }
 
-int RemoveOldestNode(Node head) //return data of node was deleted
+int RemoveOldestNode(struct Node** head) //return data of node was deleted
 {
-	Node last = head;
-	int data;
-	while (last->next != NULL)
-		last = last->next;
-	data = last->data;
-	free(last);
-	head->size = head->size - 1;
-	return data;
-}
-
-int RemoveNode(Node head, int to_remove)
-{
-	Node tmp = head;
-	Node tmp2;
-	while (tmp->next != NULL){
-		if (tmp->next->data == to_remove){
-			tmp2 = tmp->next->next;
-			free(tmp->next);
-			tmp->next = tmp2;
-			head->size = head->size - 1;
-			return 1;
-		}
-		tmp = tmp->next;
+	if (!isEmpty(head))
+	{
+		struct Node* real_head = (*head)->next;
+		int data = real_head->data;
+		struct Node* new_head = real_head->next;
+		free(real_head);
+		(*head)->next = new_head;
+	    (*head)->size = (*head)->size -1;
+		return data;
 	}
 	return 0;
 }
 
-int isEmpty(Node head)
+int queueSize(struct Node** head)
 {
-	return head->size == 0;
+	return (*head)->size;
 }
 
-int queueSize(Node head)
-{
-	return head->size;
-}
+pthread_cond_t c = PTHREAD_COND_INITIALIZER;
+pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
 
+struct Node s_waiting_requests = {0, NULL, 0};
+struct Node s_working_requests = {0, NULL, 0};
+struct Node* waiting_requests = &(s_waiting_requests);
+struct Node* working_requests = &(s_working_requests);
 
-// We need to check if it's should be here:
-// ALSO NEED TO CHECK HOW TO INITIALIZE THEM
-pthread_cond_t* c;
-pthread_cond_init(c, NULL);
-pthread_mutex_t* m;
-pthread_mutex_init(m, NULL);
-
-Node waiting_requests = createNode();
-Node working_requests = createNode();
-
-
-// HW3: Parse the new arguments to
 void getargs(int *port, int argc, int *thread_number, int *queue_size , char *argv[])
 {
 	//need to change the checking of args number
@@ -124,27 +129,22 @@ void getargs(int *port, int argc, int *thread_number, int *queue_size , char *ar
 void* handle(void* list)
 {
     while (1) {
-		pthread_mutex_lock(m);
-		while(isEmpty(waiting_requests)) // stay in the loop if there is no waiting requests
+		pthread_mutex_lock(&m);
+		while(isEmpty(&waiting_requests)) // stay in the loop if there is no waiting requests
 		{
-			pthread_cond_wait(c, m);
+			pthread_cond_wait(&c, &m);
 		}
 		//get connfd of the oldest in waiting queue (and delete it)
-		int connfd = RemoveOldestNode(waiting_requests);
-		pushNode(working_requests, connfd);
-		// 
-		// HW3: In general, don't handle the request in the main thread.
-		// Save the relevant info in a buffer and have one of the worker threads 
-		// do the work. 
-		// 
+		int connfd = RemoveOldestNode(&waiting_requests);
+		pushNode(&working_requests, connfd);
 		
-		pthread_mutex_unlock(m);
-		requestHandle(waiting_requests->data);
-		pthread_mutex_lock(m);
+		pthread_mutex_unlock(&m);
+		requestHandle(connfd);
+		Close(connfd);
+		pthread_mutex_lock(&m);
 		
-		Close(waiting_requests->data);
-		RemoveNode(working_requests, connfd);
-		pthread_mutex_unlock(m);
+		RemoveNode(&working_requests, connfd);
+		pthread_mutex_unlock(&m);
     }
 }
 
@@ -153,9 +153,8 @@ int main(int argc, char *argv[])
     int listenfd, port, threads_number, queue_size, connfd, clientlen;
     getargs(&port, argc, &threads_number, &queue_size, argv);
 	struct sockaddr_in clientaddr;
-    // 
+
     // HW3: Create some threads...
-    //
     pthread_t threads[threads_number];
     for(unsigned int i =0; i<threads_number; i++)
 	{
@@ -165,16 +164,19 @@ int main(int argc, char *argv[])
 	listenfd = Open_listenfd(port);
 	while (1) {
 		clientlen = sizeof(clientaddr);
+		fprintf(stdout, "STARTED!\n");
 		connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-		if (queueSize(waiting_requests) + queueSize(working_requests) <= queue_size) {
-			pushNode(waiting_requests, connfd);
-			pthread_cond_signal(c);
+		if (queueSize(&waiting_requests) + queueSize(&working_requests) <= queue_size) {
+			fprintf(stdout, "before pushing!\n");
+			pushNode(&waiting_requests, connfd);
+			printList(waiting_requests->next);
+			pthread_cond_signal(&c);
 		}
 		else {
 			//overload!!
 			//here is part 2 overload handlings
 		}
 	}
-	destroyList(waiting_requests);
-	destroyList(working_requests);
+	destroyList(&waiting_requests);
+	destroyList(&working_requests);
 }
