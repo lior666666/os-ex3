@@ -23,6 +23,8 @@
 
 #include "segel.h"
 
+#define REQUESTS 4
+
 /*
  * Send an HTTP request for the specified file 
  */
@@ -75,7 +77,6 @@ int main(int argc, char *argv[])
 {
   char *host, *filename;
   int port;
-  int clientfd1, clientfd2, clientfd3, clientfd4;
 
   if (argc != 4) {
     fprintf(stderr, "Usage: %s <host> <port> <filename>\n", argv[0]);
@@ -86,29 +87,16 @@ int main(int argc, char *argv[])
   port = atoi(argv[2]);
   filename = argv[3];
 
-  /* Open a single connection to the specified host and port */
-  clientfd1 = Open_clientfd(host, port);
-  clientfd2 = Open_clientfd(host, port);
-  clientfd3 = Open_clientfd(host, port);
-  clientfd4 = Open_clientfd(host, port);
-  
-  clientSend(clientfd1, filename);
-  clientPrint(clientfd1);
-  
-  clientSend(clientfd2, filename);
-  clientPrint(clientfd2);
-  
-  clientSend(clientfd3, filename);
-  clientPrint(clientfd3);
-  
-  clientSend(clientfd4, filename);
-  clientPrint(clientfd4);
-    
-  Close(clientfd1);
-  Close(clientfd2);
-  Close(clientfd3);
-  Close(clientfd4);
-  fprintf(stdout, "*******Usage: 1\n");
+  /* Open connections to the specified host and port */
+  int req[REQUESTS];
+  for (int i = 0; i<REQUESTS; i++)
+	req[i] = Open_clientfd(host, port);
+  for (int i = 0; i<REQUESTS; i++) {
+	clientSend(req[i], filename);
+	clientPrint(req[i]);
+  }
+  for (int i = 0; i<REQUESTS; i++)
+	Close(req[i]);
 
   exit(0);
 }

@@ -107,6 +107,7 @@ int queueSize(struct Node** head)
 }
 
 pthread_cond_t c = PTHREAD_COND_INITIALIZER;
+pthread_cond_t c_overload = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
 
 struct Node s_waiting_requests = {0, NULL, 0};
@@ -114,16 +115,17 @@ struct Node s_working_requests = {0, NULL, 0};
 struct Node* waiting_requests = &(s_waiting_requests);
 struct Node* working_requests = &(s_working_requests);
 
-void getargs(int *port, int argc, int *thread_number, int *queue_size , char *argv[])
+void getargs(int *port, int argc, int *thread_number, int *queue_size, const char** schedalg, char *argv[])
 {
 	//need to change the checking of args number
-    if (argc < 2) {
-		fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+	if (argc != 5) {
+		fprintf(stderr, "Usage: %s <portnum> <threads> <queue_size> <schedalg>\n", argv[0]);
 		exit(1);
-    }
+	}
     *port = atoi(argv[1]);
     *thread_number = atoi(argv[2]);
     *queue_size = atoi(argv[3]);
+    *schedalg = argv[4];
 }
 
 void* handle(void* list)
@@ -144,6 +146,7 @@ void* handle(void* list)
 		pthread_mutex_lock(&m);
 		
 		RemoveNode(&working_requests, connfd);
+		pthread_cond_signal(&c_overload);
 		pthread_mutex_unlock(&m);
     }
 }
@@ -151,7 +154,9 @@ void* handle(void* list)
 int main(int argc, char *argv[])
 {
     int listenfd, port, threads_number, queue_size, connfd, clientlen;
-    getargs(&port, argc, &threads_number, &queue_size, argv);
+    const char* schedalg;
+    int waiting_queue, working_queue;
+    getargs(&port, argc, &threads_number, &queue_size, &schedalg, argv);
 	struct sockaddr_in clientaddr;
 
     // HW3: Create some threads...
@@ -166,15 +171,49 @@ int main(int argc, char *argv[])
 		clientlen = sizeof(clientaddr);
 		fprintf(stdout, "STARTED!\n");
 		connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-		if (queueSize(&waiting_requests) + queueSize(&working_requests) <= queue_size) {
+		waiting_queue = queueSize(&waiting_requests);
+		working_queue = queueSize(&working_requests);
+		fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
+		if (waiting_queue + working_queue < queue_size) {
 			fprintf(stdout, "before pushing!\n");
 			pushNode(&waiting_requests, connfd);
 			printList(waiting_requests->next);
 			pthread_cond_signal(&c);
 		}
-		else {
-			//overload!!
-			//here is part 2 overload handlings
+		else { //overload!!
+			if (strcmp(schedalg, "block") == 0) {
+				fprintf(stdout, "before pushing! before while block!!\n");
+				pthread_mutex_lock(&m);
+				while(waiting_queue + working_queue >= queue_size) { // stay in the loop if there is overload
+					pthread_cond_wait(&c_overload, &m);
+					waiting_queue = queueSize(&waiting_requests);
+					working_queue = queueSize(&working_requests);
+				}
+				fprintf(stdout, "before pushing! after while block!!\n");
+				fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
+				pushNode(&waiting_requests, connfd);
+				printList(waiting_requests->next);
+				pthread_cond_signal(&c);
+				pthread_mutex_unlock(&m);
+			}
+			else if (strcmp(schedalg, "dh") == 0) {
+				RemoveOldestNode(&waiting_requests);
+				waiting_queue = queueSize(&waiting_requests);
+				working_queue = queueSize(&working_requests);
+				fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
+				if (waiting_queue + working_queue < queue_size) {
+					fprintf(stdout, "before pushing! dh \n");
+					pushNode(&waiting_requests, connfd);
+					printList(waiting_requests->next);
+					pthread_cond_signal(&c);
+				}
+			}
+			else if (strcmp(schedalg, "random") == 0) {
+				
+			}
+			else if (strcmp(schedalg, "dt") == 0) {
+				
+			}
 		}
 	}
 	destroyList(&waiting_requests);
