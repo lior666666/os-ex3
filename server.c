@@ -12,25 +12,12 @@
 // Most of the work is done within routines written in request.c
 //
 
-
-
 // A linked list node
 struct Node {
     int data;
     struct Node* next;
     int size;
 };
-/*
-struct Node* makeDummy()
-{
-	struct Node* new_node = (struct Node*)malloc(sizeof(struct Node));
-	new_node->data = 0;
-	new_node->size = 0;
-	new_node->next = NULL;
-	return new_node;
-}
-* */
-
 
 /* Given a reference (pointer to pointer) to the head of a
    list and an int, inserts a new node on the front of the
@@ -78,6 +65,26 @@ void RemoveNode(struct Node** head_ref, int key)
     (*head_ref)->size = (*head_ref)->size -1;
 }
 
+int removeRandomElement(struct Node** head_ref) {
+	    /* Intializes random number generator */
+	    time_t t;
+        srand((unsigned) time(&t));
+        
+        int index = (rand() % (*head_ref)->size) + 1;
+        
+        struct Node *current = (*head_ref);
+        struct Node *prev = current;
+        for (int i = 0; i < index; i++) {
+            prev = current;
+            current = current->next;
+        }
+        prev->next = current->next;
+        int data = current->data;
+        free(current);
+        (*head_ref)->size = (*head_ref)->size -1;
+        return data;
+    }
+
 void printList(struct Node* node)
 {
     while (node != NULL) {
@@ -114,51 +121,31 @@ int RemoveOldestNode(struct Node** head) //return data of node was deleted
 	return 0;
 }
 
-
-
 int queueSize(struct Node** head)
 {
 	return (*head)->size;
 }
 
-
-// We need to check if it's should be here:
-// ALSO NEED TO CHECK HOW TO INITIALIZE THEM
 pthread_cond_t c = PTHREAD_COND_INITIALIZER;
-//pthread_cond_init((&c), NULL);
+pthread_cond_t c_overload = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
-//pthread_mutex_init((&m), NULL);
 
 struct Node s_waiting_requests = {0, NULL, 0};
 struct Node s_working_requests = {0, NULL, 0};
 struct Node* waiting_requests = &(s_waiting_requests);
 struct Node* working_requests = &(s_working_requests);
 
-/*
-struct Node* waiting_requests = (struct Node*)malloc(sizeof(struct Node));
-waiting_requests>data = 0;
-waiting_requests->size = 0;
-waiting_requests->next = NULL;
-
-struct Node* working_requests = (struct Node*)malloc(sizeof(struct Node));
-working_requests->data = 0;
-working_requests->size = 0;
-working_requests->next = NULL;
-*/
-
-
-
-// HW3: Parse the new arguments to
-void getargs(int *port, int argc, int *thread_number, int *queue_size , char *argv[])
+void getargs(int *port, int argc, int *thread_number, int *queue_size, const char** schedalg, char *argv[])
 {
 	//need to change the checking of args number
-    if (argc < 2) {
-		fprintf(stderr, "Usage: %s <port>\n", argv[0]);
+	if (argc != 5) {
+		fprintf(stderr, "Usage: %s <portnum> <threads> <queue_size> <schedalg>\n", argv[0]);
 		exit(1);
-    }
+	}
     *port = atoi(argv[1]);
     *thread_number = atoi(argv[2]);
     *queue_size = atoi(argv[3]);
+    *schedalg = argv[4];
 }
 
 void* handle(void* list)
@@ -169,14 +156,10 @@ void* handle(void* list)
 		{
 			pthread_cond_wait(&c, &m);
 		}
+		fprintf(stdout, "thread!\n");
 		//get connfd of the oldest in waiting queue (and delete it)
 		int connfd = RemoveOldestNode(&waiting_requests);
 		pushNode(&working_requests, connfd);
-		// 
-		// HW3: In general, don't handle the request in the main thread.
-		// Save the relevant info in a buffer and have one of the worker threads 
-		// do the work. 
-		// 
 		
 		pthread_mutex_unlock(&m);
 		requestHandle(connfd);
@@ -184,6 +167,7 @@ void* handle(void* list)
 		pthread_mutex_lock(&m);
 		
 		RemoveNode(&working_requests, connfd);
+		pthread_cond_signal(&c_overload);
 		pthread_mutex_unlock(&m);
     }
 }
@@ -191,12 +175,12 @@ void* handle(void* list)
 int main(int argc, char *argv[])
 {
     int listenfd, port, threads_number, queue_size, connfd, clientlen;
-    getargs(&port, argc, &threads_number, &queue_size, argv);
+    const char* schedalg;
+    int waiting_queue, working_queue;
+    getargs(&port, argc, &threads_number, &queue_size, &schedalg, argv);
 	struct sockaddr_in clientaddr;
-    // 
+
     // HW3: Create some threads...
-    //
-  
     pthread_t threads[threads_number];
     for(unsigned int i =0; i<threads_number; i++)
 	{
@@ -208,17 +192,69 @@ int main(int argc, char *argv[])
 		clientlen = sizeof(clientaddr);
 		fprintf(stdout, "STARTED!\n");
 		connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-		if (queueSize(&waiting_requests) + queueSize(&working_requests) <= queue_size) {
+		waiting_queue = queueSize(&waiting_requests);
+		working_queue = queueSize(&working_requests);
+		fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
+		if (waiting_queue + working_queue < queue_size) {
+			pthread_mutex_lock(&m);
 			fprintf(stdout, "before pushing!\n");
 			pushNode(&waiting_requests, connfd);
 			printList(waiting_requests->next);
 			pthread_cond_signal(&c);
+			pthread_mutex_unlock(&m);
 		}
-		//else 
-		//{
-			//overload!!
-			//here is part 2 overload handlings
-		//}
+		else { //overload!!
+			if (strcmp(schedalg, "block") == 0) {
+				fprintf(stdout, "before pushing! before while block!!\n");
+				pthread_mutex_lock(&m);
+				while(waiting_queue + working_queue >= queue_size) { // stay in the loop if there is overload
+					pthread_cond_wait(&c_overload, &m);
+					waiting_queue = queueSize(&waiting_requests);
+					working_queue = queueSize(&working_requests);
+				}
+				fprintf(stdout, "before pushing! after while block!!\n");
+				fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
+				pushNode(&waiting_requests, connfd);
+				printList(waiting_requests->next);
+				pthread_cond_signal(&c);
+				pthread_mutex_unlock(&m);
+			}
+			else if (strcmp(schedalg, "dh") == 0) {
+				pthread_mutex_lock(&m);
+				Close(RemoveOldestNode(&waiting_requests));
+				waiting_queue = queueSize(&waiting_requests);
+				working_queue = queueSize(&working_requests);
+				fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
+				if (waiting_queue + working_queue < queue_size) {
+					fprintf(stdout, "before pushing! dh \n");
+					pushNode(&waiting_requests, connfd);
+					printList(waiting_requests->next);
+					pthread_cond_signal(&c);
+				}
+				pthread_mutex_unlock(&m);
+			}
+			else if (strcmp(schedalg, "random") == 0) {
+				pthread_mutex_lock(&m);
+				int half_size = queueSize(&waiting_requests)/2;
+				for(int i =0; i<half_size; i++)
+				{
+				    Close(removeRandomElement(&waiting_requests));
+				}
+				waiting_queue = queueSize(&waiting_requests);
+				working_queue = queueSize(&working_requests);
+				if (waiting_queue + working_queue < queue_size) {
+					pushNode(&waiting_requests, connfd);
+					printList(waiting_requests->next);
+					pthread_cond_signal(&c);
+				}
+				pthread_mutex_unlock(&m);
+			}
+			else if (strcmp(schedalg, "dt") == 0) {
+				//should continue to the next iteration in order to accept new requests
+				Close(connfd);
+				continue;
+			}
+		}
 	}
 	destroyList(&waiting_requests);
 	destroyList(&working_requests);
