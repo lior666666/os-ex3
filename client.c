@@ -86,13 +86,14 @@ int main(int argc, char *argv[])
   host = argv[1];
   port = atoi(argv[2]);
   filename = argv[3];
+  char* fn[4] = {"home1.html","home2.html","home3.html","home4.html"};
 
   /* Open connections to the specified host and port */
   int req[REQUESTS];
   for (int i = 0; i<REQUESTS; i++)
 	req[i] = Open_clientfd(host, port);
   for (int i = 0; i<REQUESTS; i++) {
-	clientSend(req[i], filename);
+	clientSend(req[i], fn[i]);
 	clientPrint(req[i]);
   }
   for (int i = 0; i<REQUESTS; i++)

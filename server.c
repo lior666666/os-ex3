@@ -136,6 +136,7 @@ void* handle(void* list)
 		{
 			pthread_cond_wait(&c, &m);
 		}
+		fprintf(stdout, "thread!\n");
 		//get connfd of the oldest in waiting queue (and delete it)
 		int connfd = RemoveOldestNode(&waiting_requests);
 		pushNode(&working_requests, connfd);
@@ -175,10 +176,12 @@ int main(int argc, char *argv[])
 		working_queue = queueSize(&working_requests);
 		fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
 		if (waiting_queue + working_queue < queue_size) {
+			pthread_mutex_lock(&m);
 			fprintf(stdout, "before pushing!\n");
 			pushNode(&waiting_requests, connfd);
 			printList(waiting_requests->next);
 			pthread_cond_signal(&c);
+			pthread_mutex_unlock(&m);
 		}
 		else { //overload!!
 			if (strcmp(schedalg, "block") == 0) {
@@ -197,7 +200,8 @@ int main(int argc, char *argv[])
 				pthread_mutex_unlock(&m);
 			}
 			else if (strcmp(schedalg, "dh") == 0) {
-				RemoveOldestNode(&waiting_requests);
+				pthread_mutex_lock(&m);
+				Close(RemoveOldestNode(&waiting_requests));
 				waiting_queue = queueSize(&waiting_requests);
 				working_queue = queueSize(&working_requests);
 				fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
@@ -207,12 +211,15 @@ int main(int argc, char *argv[])
 					printList(waiting_requests->next);
 					pthread_cond_signal(&c);
 				}
+				pthread_mutex_unlock(&m);
 			}
 			else if (strcmp(schedalg, "random") == 0) {
 				
 			}
 			else if (strcmp(schedalg, "dt") == 0) {
-				
+				//should continue to the next iteration in order to accept new requests
+				Close(connfd);
+				continue;
 			}
 		}
 	}
