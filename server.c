@@ -13,6 +13,15 @@
 //
 
 // A linked list node
+struct request_s {
+    int connfd;
+    time_t arrival_time_sec;
+    suseconds_t arrival_time_usec;
+    time_t dispatch_time_sec;
+    suseconds_t dispatch_time_usec;
+};
+
+// A linked list node
 struct Node {
     int data;
     struct Node* next;
@@ -65,6 +74,26 @@ void RemoveNode(struct Node** head_ref, int key)
     (*head_ref)->size = (*head_ref)->size -1;
 }
 
+int removeRandomElement(struct Node** head_ref) {
+	    /* Intializes random number generator */
+	    time_t t;
+        srand((unsigned) time(&t));
+        
+        int index = (rand() % (*head_ref)->size) + 1;
+        
+        struct Node *current = (*head_ref);
+        struct Node *prev = current;
+        for (int i = 0; i < index; i++) {
+            prev = current;
+            current = current->next;
+        }
+        prev->next = current->next;
+        int data = current->data;
+        free(current);
+        (*head_ref)->size = (*head_ref)->size -1;
+        return data;
+    }
+
 void printList(struct Node* node)
 {
     while (node != NULL) {
@@ -115,6 +144,14 @@ struct Node s_working_requests = {0, NULL, 0};
 struct Node* waiting_requests = &(s_waiting_requests);
 struct Node* working_requests = &(s_working_requests);
 
+// A thread struct
+struct thread_s {
+    int id;
+    int thread_counter;
+    int thread_static_counter;
+    int thread_dynamic_counter;
+};
+
 void getargs(int *port, int argc, int *thread_number, int *queue_size, const char** schedalg, char *argv[])
 {
 	//need to change the checking of args number
@@ -128,8 +165,9 @@ void getargs(int *port, int argc, int *thread_number, int *queue_size, const cha
     *schedalg = argv[4];
 }
 
-void* handle(void* list)
+void* handle(void* ptr)
 {
+	struct thread_s* thread = (struct thread_s*)ptr;
     while (1) {
 		pthread_mutex_lock(&m);
 		while(isEmpty(&waiting_requests)) // stay in the loop if there is no waiting requests
@@ -142,7 +180,7 @@ void* handle(void* list)
 		pushNode(&working_requests, connfd);
 		
 		pthread_mutex_unlock(&m);
-		requestHandle(connfd);
+		requestHandle(connfd, 0, 0, 0, 0, thread->id, &(thread->thread_counter), &(thread->thread_static_counter), &(thread->thread_dynamic_counter));
 		Close(connfd);
 		pthread_mutex_lock(&m);
 		
@@ -164,14 +202,25 @@ int main(int argc, char *argv[])
     pthread_t threads[threads_number];
     for(unsigned int i =0; i<threads_number; i++)
 	{
-		pthread_create(&threads[i], NULL, handle, NULL);
+		struct thread_s* thread = (struct thread_s*)malloc(sizeof(struct thread_s));
+		thread->id = i;
+		thread->thread_counter = 0;
+		thread->thread_static_counter = 0;
+		thread->thread_dynamic_counter = 0;
+		pthread_create(&threads[i], NULL, handle, (void*)thread);
 	}
 	
 	listenfd = Open_listenfd(port);
 	while (1) {
 		clientlen = sizeof(clientaddr);
 		fprintf(stdout, "STARTED!\n");
+		struct request_s* req = (struct request_s*)malloc(sizeof(struct request_s));
+		struct timeval current_time;
 		connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
+		req->connfd = connfd;
+		gettimeofday(&current_time, NULL);
+		req->arrival_time_sec = current_time.tv_sec;
+		req->arrival_time_usec = current_time.tv_usec;
 		waiting_queue = queueSize(&waiting_requests);
 		working_queue = queueSize(&working_requests);
 		fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
@@ -184,6 +233,7 @@ int main(int argc, char *argv[])
 			pthread_mutex_unlock(&m);
 		}
 		else { //overload!!
+			fprintf(stdout, "check!\n");
 			if (strcmp(schedalg, "block") == 0) {
 				fprintf(stdout, "before pushing! before while block!!\n");
 				pthread_mutex_lock(&m);
@@ -201,6 +251,11 @@ int main(int argc, char *argv[])
 			}
 			else if (strcmp(schedalg, "dh") == 0) {
 				pthread_mutex_lock(&m);
+				waiting_queue = queueSize(&waiting_requests);
+				if (waiting_queue == 0){
+					Close(connfd);
+					continue;
+				}
 				Close(RemoveOldestNode(&waiting_requests));
 				waiting_queue = queueSize(&waiting_requests);
 				working_queue = queueSize(&working_requests);
@@ -214,7 +269,25 @@ int main(int argc, char *argv[])
 				pthread_mutex_unlock(&m);
 			}
 			else if (strcmp(schedalg, "random") == 0) {
-				
+				pthread_mutex_lock(&m);
+				waiting_queue = queueSize(&waiting_requests);
+				if (waiting_queue == 0){
+					Close(connfd);
+					continue;
+				}
+				int half_size = round(((double)queueSize(&waiting_requests))/2 + 0.01);
+				for(int i =0; i<half_size; i++)
+				{
+				    Close(removeRandomElement(&waiting_requests));
+				}
+				waiting_queue = queueSize(&waiting_requests);
+				working_queue = queueSize(&working_requests);
+				if (waiting_queue + working_queue < queue_size) {
+					pushNode(&waiting_requests, connfd);
+					printList(waiting_requests->next);
+					pthread_cond_signal(&c);
+				}
+				pthread_mutex_unlock(&m);
 			}
 			else if (strcmp(schedalg, "dt") == 0) {
 				//should continue to the next iteration in order to accept new requests

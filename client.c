@@ -23,7 +23,7 @@
 
 #include "segel.h"
 
-#define REQUESTS 4
+#define REQUESTS 6
 
 /*
  * Send an HTTP request for the specified file 
@@ -86,7 +86,7 @@ int main(int argc, char *argv[])
   host = argv[1];
   port = atoi(argv[2]);
   filename = argv[3];
-  char* fn[4] = {"home1.html","home2.html","home3.html","home4.html"};
+  char* fn[6] = {"home1.html","home2.html","home3.html","home4.html","home5.html","home6.html"};
 
   /* Open connections to the specified host and port */
   int req[REQUESTS];
