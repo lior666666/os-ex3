@@ -6,15 +6,15 @@ OBJS = server.o request.o segel.o client.o
 TARGET = server
 
 CC = gcc
-CFLAGS = -g -Wall -pthread
+CFLAGS = -g -Wall -pthread 
 
-LIBS = -lpthread 
+LIBS = -lpthread -lm
 
 .SUFFIXES: .c .o 
 
 all: server client output.cgi
 	-mkdir -p public
-	-cp output.cgi favicon.ico home.html public
+	-cp output.cgi favicon.ico home1.html home2.html home3.html home4.html home5.html home6.html public
 
 server: server.o request.o segel.o
 	$(CC) $(CFLAGS) -o server server.o request.o segel.o $(LIBS)
