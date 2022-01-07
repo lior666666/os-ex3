@@ -119,6 +119,7 @@ int RemoveOldestNode(struct Node** head, time_t* arrival_time_sec, suseconds_t* 
 	if (!isEmpty(head))
 	{
 		struct Node* real_head = (*head)->next;
+		int connfd = real_head->connfd;
 		*arrival_time_sec = real_head->arrival_time_sec;
 		*arrival_time_usec = real_head->arrival_time_usec;
 		*dispatch_time_sec = real_head->dispatch_time_sec;
@@ -127,7 +128,7 @@ int RemoveOldestNode(struct Node** head, time_t* arrival_time_sec, suseconds_t* 
 		free(real_head);
 		(*head)->next = new_head;
 	    (*head)->size = (*head)->size -1;
-		return real_head->connfd;
+		return connfd;
 	}
 	return -1;
 }
@@ -183,6 +184,11 @@ void* handle(void* ptr)
 		time_t dispatch_time_sec;
 		suseconds_t dispatch_time_usec;
 		int connfd = RemoveOldestNode(&waiting_requests, &arrival_time_sec, &arrival_time_usec, &dispatch_time_sec, &dispatch_time_usec);
+		//the moment which the request was picked up by worker thread
+		struct timeval current_time;
+		gettimeofday(&current_time, NULL);
+		dispatch_time_sec = current_time.tv_sec;
+		dispatch_time_usec = current_time.tv_usec;
 		pushNode(&working_requests, connfd, arrival_time_sec, arrival_time_usec, dispatch_time_sec, dispatch_time_usec);
 		
 		pthread_mutex_unlock(&m);
