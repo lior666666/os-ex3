@@ -331,8 +331,9 @@ ssize_t rio_writen(int fd, void *usrbuf, size_t n)
 static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
 {
     int cnt;
-
+    fprintf(stdout, "1111111\n");
     while (rp->rio_cnt <= 0) {  /* refill if buf is empty */
+		fprintf(stdout, "222222\n");
         rp->rio_cnt = read(rp->rio_fd, rp->rio_buf, 
                            sizeof(rp->rio_buf));
         if (rp->rio_cnt < 0) {
@@ -352,6 +353,7 @@ static ssize_t rio_read(rio_t *rp, char *usrbuf, size_t n)
     memcpy(usrbuf, rp->rio_bufptr, cnt);
     rp->rio_bufptr += cnt;
     rp->rio_cnt -= cnt;
+    fprintf(stdout, "333333\n");
     return cnt;
 }
 /* $end rio_read */

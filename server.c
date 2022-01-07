@@ -13,17 +13,12 @@
 //
 
 // A linked list node
-struct request_s {
+struct Node {
     int connfd;
     time_t arrival_time_sec;
     suseconds_t arrival_time_usec;
     time_t dispatch_time_sec;
     suseconds_t dispatch_time_usec;
-};
-
-// A linked list node
-struct Node {
-    int data;
     struct Node* next;
     int size;
 };
@@ -31,10 +26,14 @@ struct Node {
 /* Given a reference (pointer to pointer) to the head of a
    list and an int, inserts a new node on the front of the
    list. */
-void pushNode(struct Node** head_ref, int new_data)
+void pushNode(struct Node** head_ref, int connfd, time_t arrival_time_sec, suseconds_t arrival_time_usec, time_t dispatch_time_sec, suseconds_t dispatch_time_usec)
 {
     struct Node* new_node = (struct Node*)malloc(sizeof(struct Node));
-    new_node->data = new_data;
+    new_node->connfd = connfd;
+    new_node->arrival_time_sec = arrival_time_sec;
+    new_node->arrival_time_usec = arrival_time_usec;
+    new_node->dispatch_time_sec = dispatch_time_sec;
+    new_node->dispatch_time_usec = dispatch_time_usec;
     struct Node *temp = *head_ref;
     while (temp->next != NULL) {
         temp = temp->next;
@@ -50,7 +49,7 @@ void RemoveNode(struct Node** head_ref, int key)
     struct Node *temp = *head_ref, *prev;
  
     // If head node itself holds the key to be deleted
-    if (temp != NULL && temp->data == key) {
+    if (temp != NULL && temp->connfd == key) {
         *head_ref = temp->next; // Changed head
         free(temp); // free old head
         return;
@@ -58,7 +57,7 @@ void RemoveNode(struct Node** head_ref, int key)
  
     // Search for the key to be deleted, keep track of the
     // previous node as we need to change 'prev->next'
-    while (temp != NULL && temp->data != key) {
+    while (temp != NULL && temp->connfd != key) {
         prev = temp;
         temp = temp->next;
     }
@@ -88,16 +87,16 @@ int removeRandomElement(struct Node** head_ref) {
             current = current->next;
         }
         prev->next = current->next;
-        int data = current->data;
+        int connfd = current->connfd;
         free(current);
         (*head_ref)->size = (*head_ref)->size -1;
-        return data;
-    }
+        return connfd;
+}
 
 void printList(struct Node* node)
 {
     while (node != NULL) {
-        fprintf(stdout, " %d \n", node->data);
+        fprintf(stdout, " %d \n", node->connfd);
         node = node->next;
     }
 }
@@ -115,19 +114,22 @@ int isEmpty(struct Node** head)
 	return (*head)->size == 0;
 }
 
-int RemoveOldestNode(struct Node** head) //return data of node was deleted
+int RemoveOldestNode(struct Node** head, time_t* arrival_time_sec, suseconds_t* arrival_time_usec, time_t* dispatch_time_sec, suseconds_t* dispatch_time_usec) //return data of node was deleted
 {
 	if (!isEmpty(head))
 	{
 		struct Node* real_head = (*head)->next;
-		int data = real_head->data;
+		*arrival_time_sec = real_head->arrival_time_sec;
+		*arrival_time_usec = real_head->arrival_time_usec;
+		*dispatch_time_sec = real_head->dispatch_time_sec;
+		*dispatch_time_usec = real_head->dispatch_time_usec;
 		struct Node* new_head = real_head->next;
 		free(real_head);
 		(*head)->next = new_head;
 	    (*head)->size = (*head)->size -1;
-		return data;
+		return real_head->connfd;
 	}
-	return 0;
+	return -1;
 }
 
 int queueSize(struct Node** head)
@@ -139,8 +141,8 @@ pthread_cond_t c = PTHREAD_COND_INITIALIZER;
 pthread_cond_t c_overload = PTHREAD_COND_INITIALIZER;
 pthread_mutex_t m = PTHREAD_MUTEX_INITIALIZER;
 
-struct Node s_waiting_requests = {0, NULL, 0};
-struct Node s_working_requests = {0, NULL, 0};
+struct Node s_waiting_requests = {0, 0, 0, 0, 0, NULL, 0};
+struct Node s_working_requests = {0, 0, 0, 0, 0, NULL, 0};
 struct Node* waiting_requests = &(s_waiting_requests);
 struct Node* working_requests = &(s_working_requests);
 
@@ -176,11 +178,15 @@ void* handle(void* ptr)
 		}
 		fprintf(stdout, "thread!\n");
 		//get connfd of the oldest in waiting queue (and delete it)
-		int connfd = RemoveOldestNode(&waiting_requests);
-		pushNode(&working_requests, connfd);
+		time_t arrival_time_sec;
+		suseconds_t arrival_time_usec;
+		time_t dispatch_time_sec;
+		suseconds_t dispatch_time_usec;
+		int connfd = RemoveOldestNode(&waiting_requests, &arrival_time_sec, &arrival_time_usec, &dispatch_time_sec, &dispatch_time_usec);
+		pushNode(&working_requests, connfd, arrival_time_sec, arrival_time_usec, dispatch_time_sec, dispatch_time_usec);
 		
 		pthread_mutex_unlock(&m);
-		requestHandle(connfd, 0, 0, 0, 0, thread->id, &(thread->thread_counter), &(thread->thread_static_counter), &(thread->thread_dynamic_counter));
+		requestHandle(connfd, arrival_time_sec, arrival_time_usec, dispatch_time_sec, dispatch_time_usec, thread->id, &(thread->thread_counter), &(thread->thread_static_counter), &(thread->thread_dynamic_counter));
 		Close(connfd);
 		pthread_mutex_lock(&m);
 		
@@ -214,20 +220,16 @@ int main(int argc, char *argv[])
 	while (1) {
 		clientlen = sizeof(clientaddr);
 		fprintf(stdout, "STARTED!\n");
-		struct request_s* req = (struct request_s*)malloc(sizeof(struct request_s));
 		struct timeval current_time;
 		connfd = Accept(listenfd, (SA *)&clientaddr, (socklen_t *) &clientlen);
-		req->connfd = connfd;
 		gettimeofday(&current_time, NULL);
-		req->arrival_time_sec = current_time.tv_sec;
-		req->arrival_time_usec = current_time.tv_usec;
 		waiting_queue = queueSize(&waiting_requests);
 		working_queue = queueSize(&working_requests);
 		fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
 		if (waiting_queue + working_queue < queue_size) {
 			pthread_mutex_lock(&m);
 			fprintf(stdout, "before pushing!\n");
-			pushNode(&waiting_requests, connfd);
+			pushNode(&waiting_requests, connfd, current_time.tv_sec, current_time.tv_usec, 0 , 0);
 			printList(waiting_requests->next);
 			pthread_cond_signal(&c);
 			pthread_mutex_unlock(&m);
@@ -244,7 +246,7 @@ int main(int argc, char *argv[])
 				}
 				fprintf(stdout, "before pushing! after while block!!\n");
 				fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
-				pushNode(&waiting_requests, connfd);
+				pushNode(&waiting_requests, connfd, current_time.tv_sec, current_time.tv_usec, 0 , 0);
 				printList(waiting_requests->next);
 				pthread_cond_signal(&c);
 				pthread_mutex_unlock(&m);
@@ -256,13 +258,17 @@ int main(int argc, char *argv[])
 					Close(connfd);
 					continue;
 				}
-				Close(RemoveOldestNode(&waiting_requests));
+				time_t arrival_time_sec;
+				suseconds_t arrival_time_usec;
+				time_t dispatch_time_sec;
+				suseconds_t dispatch_time_usec;
+				Close(RemoveOldestNode(&waiting_requests, &arrival_time_sec, &arrival_time_usec, &dispatch_time_sec, &dispatch_time_usec));
 				waiting_queue = queueSize(&waiting_requests);
 				working_queue = queueSize(&working_requests);
 				fprintf(stdout, "%d, %d, %d\n", waiting_queue, working_queue, queue_size);
 				if (waiting_queue + working_queue < queue_size) {
 					fprintf(stdout, "before pushing! dh \n");
-					pushNode(&waiting_requests, connfd);
+					pushNode(&waiting_requests, connfd, current_time.tv_sec, current_time.tv_usec, 0 , 0);
 					printList(waiting_requests->next);
 					pthread_cond_signal(&c);
 				}
@@ -283,7 +289,7 @@ int main(int argc, char *argv[])
 				waiting_queue = queueSize(&waiting_requests);
 				working_queue = queueSize(&working_requests);
 				if (waiting_queue + working_queue < queue_size) {
-					pushNode(&waiting_requests, connfd);
+					pushNode(&waiting_requests, connfd, current_time.tv_sec, current_time.tv_usec, 0 , 0);
 					printList(waiting_requests->next);
 					pthread_cond_signal(&c);
 				}

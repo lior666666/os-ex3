@@ -165,18 +165,20 @@ void requestHandle(int fd, time_t arrival_time_sec, suseconds_t arrival_time_use
 {
    (*thread_counter)++;
    sleep(5);
+
    int is_static;
    struct stat sbuf;
    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
    char filename[MAXLINE], cgiargs[MAXLINE];
    rio_t rio;
-
+   
    Rio_readinitb(&rio, fd);
    Rio_readlineb(&rio, buf, MAXLINE);
+   
    sscanf(buf, "%s %s %s", method, uri, version);
-
+   
    printf("%s %s %s\n", method, uri, version);
-
+	
    if (strcasecmp(method, "GET")) {
       requestError(fd, method, "501", "Not Implemented", "OS-HW3 Server does not implement this method");
       return;
@@ -206,5 +208,3 @@ void requestHandle(int fd, time_t arrival_time_sec, suseconds_t arrival_time_use
       requestServeDynamic(fd, filename, cgiargs);
    }
 }
-
-
