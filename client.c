@@ -23,8 +23,6 @@
 
 #include "segel.h"
 
-#define REQUESTS 6
-
 /*
  * Send an HTTP request for the specified file 
  */
@@ -77,6 +75,7 @@ int main(int argc, char *argv[])
 {
   char *host, *filename;
   int port;
+  int clientfd;
 
   if (argc != 4) {
     fprintf(stderr, "Usage: %s <host> <port> <filename>\n", argv[0]);
@@ -86,18 +85,14 @@ int main(int argc, char *argv[])
   host = argv[1];
   port = atoi(argv[2]);
   filename = argv[3];
-  char* fn[6] = {"home1.html","home2.html","home3.html","home4.html","home5.html","home67.html"};
 
-  /* Open connections to the specified host and port */
-  int req[REQUESTS];
-  for (int i = 0; i<REQUESTS; i++)
-	req[i] = Open_clientfd(host, port);
-  for (int i = 0; i<REQUESTS; i++) {
-	clientSend(req[i], fn[i]);
-	clientPrint(req[i]);
-  }
-  for (int i = 0; i<REQUESTS; i++)
-	Close(req[i]);
+  /* Open a single connection to the specified host and port */
+  clientfd = Open_clientfd(host, port);
+  
+  clientSend(clientfd, filename);
+  clientPrint(clientfd);
+    
+  Close(clientfd);
 
   exit(0);
 }
