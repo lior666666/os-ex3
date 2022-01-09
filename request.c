@@ -131,6 +131,7 @@ void requestServeDynamic(int fd, char *filename, char *cgiargs, time_t arrival_t
 	suseconds_t arrival_time_usec, time_t dispatch_time_sec, suseconds_t dispatch_time_usec, 
 	int thread_id, int* thread_counter, int* thread_static_counter, int* thread_dynamic_counter) 
 {
+	(*thread_dynamic_counter)++;
    char buf[MAXLINE], *emptylist[] = {NULL};
 
    // The server does only a little bit of the header.  
@@ -161,6 +162,7 @@ void requestServeStatic(int fd, char *filename, int filesize, time_t arrival_tim
 	suseconds_t arrival_time_usec, time_t dispatch_time_sec, suseconds_t dispatch_time_usec, 
 	int thread_id, int* thread_counter, int* thread_static_counter, int* thread_dynamic_counter) 
 {
+	(*thread_static_counter)++;
    int srcfd;
    char *srcp, filetype[MAXLINE], buf[MAXBUF];
 
@@ -198,8 +200,6 @@ void requestHandle(int fd, time_t arrival_time_sec, suseconds_t arrival_time_use
 	suseconds_t dispatch_time_usec, int thread_id, int* thread_counter, int* thread_static_counter, int* thread_dynamic_counter)
 {
    (*thread_counter)++;
-   sleep(5);
-   
    int is_static;
    struct stat sbuf;
    char buf[MAXLINE], method[MAXLINE], uri[MAXLINE], version[MAXLINE];
@@ -236,7 +236,6 @@ void requestHandle(int fd, time_t arrival_time_sec, suseconds_t arrival_time_use
 			dispatch_time_usec, thread_id, thread_counter, thread_static_counter, thread_dynamic_counter);
          return;
       }
-      (*thread_static_counter)++;
       requestServeStatic(fd, filename, sbuf.st_size, arrival_time_sec, arrival_time_usec, dispatch_time_sec, 
 		dispatch_time_usec, thread_id, thread_counter, thread_static_counter, thread_dynamic_counter);
    } else {
@@ -246,7 +245,6 @@ void requestHandle(int fd, time_t arrival_time_sec, suseconds_t arrival_time_use
 			dispatch_time_usec, thread_id, thread_counter, thread_static_counter, thread_dynamic_counter);
          return;
       }
-      (*thread_dynamic_counter)++;
       requestServeDynamic(fd, filename, cgiargs, arrival_time_sec, arrival_time_usec, dispatch_time_sec, 
 		dispatch_time_usec, thread_id, thread_counter, thread_static_counter, thread_dynamic_counter);
    }
